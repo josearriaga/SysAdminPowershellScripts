@@ -3,7 +3,6 @@
 
 This script allows you to search for and manage mail-enabled security groups and Office 365 groups in Exchange Online. It has the following features:
 
-Connects to Exchange Online using global admin credentials.
 Prompts the user to enter a keyword to search for.
 Searches for both mail-enabled security groups and Office 365 groups that contain the keyword in their name or description.
 Displays the number of groups found.
