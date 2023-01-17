@@ -12,22 +12,11 @@ try {
     # Search for Office 365 groups that contain the search keyword in their name or description
     $unifiedGroups = Get-UnifiedGroup -Filter "(DisplayName -Like '*$searchWord*') -or (Description -Like '*$searchWord*')"
     Write-Host "Found $($unifiedGroups.Count) Office 365 groups" -ForegroundColor Green
-    Write-Host "Total of $($groups.Count) groups found" -ForegroundColor Green
+    Write-Host "Total of $($secGroups.Count+$unifiedGroups.Count) groups found" -ForegroundColor Green
 }
 catch {
     Write-Host "An error occurred while searching for groups: $_" -ForegroundColor Red
 }
-
-# Create a new list
-$groups = New-Object System.Collections.Generic.List[psobject]
-
-# Add the mail-enabled security groups to the list
-$groups.AddRange($secGroups | Select-Object DisplayName,PrimarySmtpAddress)
-
-
-# Add the Office 365 groups to the list
-$groups.AddRange($unifiedGroups | Select-Object DisplayName,PrimarySmtpAddress)
-
 
 # Prompt the user if they want to export the CSV file in the current directory
 $scriptPath = Split-Path $script:MyInvocation.MyCommand.Path
@@ -43,24 +32,44 @@ if ($exportChoice -eq "Y") {
 }
 
 # Export the results to a CSV file
-$groups | Select-Object -Property DisplayName,PrimarySmtpAddress | Export-Csv -Path "$csvPath\EmailGroups.csv" -NoTypeInformation
+$secGroups | Select-Object -Property DisplayName,PrimarySmtpAddress, @{Name="GroupType"; Expression={"Mail-Enabled Security Group"}} | Export-Csv -Path "$csvPath\EmailGroups.csv" -NoTypeInformation -Append
+$unifiedGroups | Select-Object -Property DisplayName,PrimarySmtpAddress, @{Name="GroupType"; Expression={"Office 365 Group"}} | Export-Csv -Path "$csvPath\EmailGroups.csv" -NoTypeInformation -Append
 
 # Prompt the user to enter the email address of the owner
 $userEmail = Read-Host -Prompt "Enter the email address of the owner"
 
-# Iterate through each group in the CSV file and add the owner
-foreach ($group in $groups) {
-    try {
-        Add-UnifiedGroupLinks -Identity $group.PrimarySmtpAddress -LinkType Members -Links $userEmail
-        Write-Host "Successfully added $userEmail as member to $($group.PrimarySmtpAddress)" -ForegroundColor Green
-        Add-UnifiedGroupLinks -Identity $group.PrimarySmtpAddress -LinkType Owners -Links $userEmail
-        Write-Host "Successfully added $userEmail as owner to $($group.PrimarySmtpAddress)" -ForegroundColor Green
+# Prompt the user to confirm the action of making the user a manager of the mail-enabled security groups
+$confirmManager = Read-Host -Prompt "Are you sure you want to make $userEmail a manager of the mail-enabled security groups found? Y or N"
+if ($confirmManager -eq "Y") {
+    # Iterate through each mail-enabled security group and make the user a manager
+    foreach ($secGroup in $secGroups) {
+        try {
+            # Make the user a manager of the mail-enabled security group
+            Set-DistributionGroup -Identity $secGroup.PrimarySmtpAddress -ManagedBy $userEmail -BypassSecurityGroupManagerCheck
+            Add-DistributionGroupMember -Identity $secGroup.PrimarySmtpAddress -Member $userEmail -BypassSecurityGroupManagerCheck
+            Write-Host "Successfully made $userEmail a manager and member of $($secGroup.PrimarySmtpAddress)" -ForegroundColor Green
+        }
+        catch [Microsoft.Exchange.Configuration.Tasks.OperationRequiresGroupManagerException] {
+            Write-Host "You don't have sufficient permissions to make $userEmail a manager of $($secGroup.PrimarySmtpAddress). This operation can only be performed by a manager of the group." -ForegroundColor DarkRed
+        }
     }
-    catch {
-        Write-Host "An error occurred while adding $userEmail as owner and member to $($group.PrimarySmtpAddress): $_" -ForegroundColor Red
-    }
+} else {
+    Write-Host "Aborted action of making $userEmail a manager of the mail-enabled security groups" -ForegroundColor Yellow
 }
 
+
+foreach ($unifiedGroup in $unifiedGroups) {
+    try {
+        # Add the user as a member and owner of the Office 365 group
+        Add-UnifiedGroupLinks -Identity $unifiedGroup.PrimarySmtpAddress -LinkType Members -Links $userEmail
+        Write-Host "Successfully added $userEmail as member to $($unifiedGroup.PrimarySmtpAddress)" -ForegroundColor Green
+        Add-UnifiedGroupLinks -Identity $unifiedGroup.PrimarySmtpAddress -LinkType Owners -Links $userEmail
+        Write-Host "Successfully added $userEmail as owner to $($unifiedGroup.PrimarySmtpAddress)" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "An error occurred while adding $userEmail as owner and member to $($unifiedGroup.PrimarySmtpAddress): $_" -ForegroundColor Red
+    }
+}
 # Prompt the user to restart the script or break it
 $restart = Read-Host -Prompt "Restart script? Y or N"
 if ($restart -eq "Y") {
