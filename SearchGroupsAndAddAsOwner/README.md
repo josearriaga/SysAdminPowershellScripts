@@ -19,7 +19,5 @@ This script allows you to search for and manage mail-enabled security groups and
 - The script must be run with an account that has been granted the necessary permissions in Exchange Online.
 
 # How to use the script
-
-- Open a PowerShell window and connect to Exchange Online using the Connect-ExchangeOnline cmdlet.
 - Run the script by typing the path to the script file, for example: .\GroupManagement.ps1
 - Follow the prompts to search for groups, export the results to a CSV file, and manage the groups.
