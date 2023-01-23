@@ -1,52 +1,44 @@
 Connect-AzureAD
 
-# Retrieve a list of all the recipients in your organization
-Get-AzureADUser -All $true | select "UserPrincipalName" | ConvertTo-csv -NoTypeInformation | Out-File $PSScriptRoot\AllUsers.csv 
-$AllUsers = " $PSScriptRoot\AllUsers.csv "
-
-Start-Sleep -Seconds 20
-Write-Host "AllUsers: $AllUsers" -ForegroundColor Cyan
+# Retrieve a specific user
+$User = Get-AzureADUser -ObjectId "ENTER USER OBJECT ID HERE" 
 
 # Prompt user for keyword
-$Keyword = Read-Host "Enter keyword to search for in group names"
+$Keyword = Read-Host "Enter keyword to search for in group names. WARNING: Must be a single word no spaces"
 Write-Host "Keyword: $Keyword" -ForegroundColor Cyan
 
 # Get all groups that match the keyword
-$Groups = Get-AzureADGroup -SearchString "$Keyword"
-Write-Host "Groups: $Groups" -ForegroundColor Cyan
+$Groups = Get-AzureADGroup -Top 6000 | Where-Object {$_.DisplayName -like "Guidepost*$Keyword"}
 
 # Loop through each group
+
+$NotInGroups = @()
+
 foreach ($Group in $Groups) {
     Write-Host "Checking members of group: $($Group.displayName)" -ForegroundColor Magenta
 
     $Members = Get-AzureADGroupMember -All $true -ObjectId $Group.ObjectId | Where-Object {$_.UserType -eq 'member'}
-    Write-Host "Members: $Members" -ForegroundColor Cyan
     if ($Members) {
-        # Creating an empty array to store the list of users not in groups
-        $UsersNotInGroups = @()
-        # Loop through each user in the $AllUsers variable
-        foreach ($User in $AllUsers) {
-            if ($Members.UserPrincipalName -notcontains $User.UserPrincipalName) {
-                $UsersNotInGroups += $User
-            }
+        if ($Members.UserPrincipalName -notcontains $User.UserPrincipalName) {
+            $NotInGroups += $Group.displayName
         }
-    }
-        If ($UsersNotInGroups.Count -eq 0) {
-        Write-Host "No users were found that are not in group '$($Group.displayName)'"
-    } else {
-        Write-Host "Users not in group '$($Group.displayName)':" -ForegroundColor Cyan
-        $UsersNotInGroups | Format-Table -Property UserPrincipalName, DisplayName
     }
 }
 
+If ($NotInGroups.Count -eq 0) {
+    Write-Host "User is a Member of all the groups in the list" -ForegroundColor Green
+} else {
+    Write-Host "User not in groups:" -ForegroundColor Cyan
+    Write-Host $NotInGroups -ForegroundColor Cyan
+}
 
-$DefaultPath = "$PSScriptRoot\UsersNotInGroups.csv"
+
+$DefaultPath = "$PSScriptRoot\UserNotInGroups.csv"
 
 # Prompt user for save location
 $SaveLocation = Read-Host "Do you want to save the csv in the directory the script is stored in? (Y/N)"
 
 if ($SaveLocation -eq "Y") {
-    $DefaultPath = (Join-Path $PSScriptRoot "UsersNotInGroups.csv")
     $SaveLocation = $DefaultPath
 } else {
     $SaveLocation = Read-Host "Please specify the full path where you want to save the CSV file"
@@ -56,9 +48,7 @@ Write-Host "Exporting the list of users not in groups to a CSV file" -Foreground
 
 # Export the list of users not in groups to a CSV file
 try {
-    $UsersNotInGroups | Select-Object UserPrincipalName, DisplayName | Export-Csv -Path $SaveLocation -NoTypeInformation
-}
-
-catch {
-    Write-Error "Error exporting the list of users to a CSV file: $($_.Exception.Message)"
+    $UsersNotInGroups | Select-Object UserPrincipalName, DisplayName Write-Host "List of users not in groups exported to $SaveLocation" -ForegroundColor Green
+} catch {
+    Write-Host "Error exporting list of users not in groups to $SaveLocation" -ForegroundColor Red
 }
