@@ -7,7 +7,7 @@ $User = Get-AzureADUser -ObjectId "ENTER USER OBJECT ID HERE"
 $Keyword = Read-Host "Enter keyword to search for in group names. WARNING: Must be a single word no spaces"
 Write-Host "Keyword: $Keyword" -ForegroundColor Cyan
 
-# Get all groups that match the keyword
+# Get all groups that match the keyword, this line looks for groups that startwith "Guidepost" and end with whatever was inputed for $Keyword. To change the startwith simply replace "Guidepost"
 $Groups = Get-AzureADGroup -Top 6000 | Where-Object {$_.DisplayName -like "Guidepost*$Keyword"}
 
 # Loop through each group
